@@ -4,7 +4,9 @@ Autenticação entre dispositivos por QR Code, com aprovação explícita, uso �
 
 ## Estado
 
-Este repositório implementa a Fase 1 da especificação técnica v0.2.0. A API possui cadastro, login por senha, sessão atual, emissão de CSRF e logout com revogação no PostgreSQL. O login por QR permanece para uma fase posterior.
+O Sentinel implementa cadastro e login por senha, sessões revogáveis e autenticação entre
+dispositivos por QR. O fluxo QR exige comparação de código e aprovação explícita no celular;
+o desktop conclui a troca por WebSocket ou polling usando o estado persistido no PostgreSQL.
 
 ## Estrutura
 
@@ -16,7 +18,6 @@ Este repositório implementa a Fase 1 da especificação técnica v0.2.0. A API 
 - `crates/api-contract`: DTOs e erros públicos RFC 9457.
 - `migrations`: schema PostgreSQL versionado.
 - `docs`: especificação, ADRs, arquitetura, ameaças, privacidade, incidentes e OpenAPI.
-- `tests`: integração, concorrência, segurança e E2E.
 - `deploy`: ambiente local e proxy TLS.
 
 ## Desenvolvimento local
@@ -42,6 +43,13 @@ Endpoints disponíveis:
 - `GET /v1/auth/me`: retorna identidade e prazos da sessão ativa.
 - `GET /v1/auth/csrf`: emite ou renova CSRF vinculado à sessão.
 - `POST /v1/auth/logout`: exige origem e CSRF, revoga no servidor e limpa o cookie.
+- `POST /v1/qr-login/challenges`: cria um challenge temporário no desktop.
+- `POST /v1/qr-login/scan/bootstrap`: inicia a continuação segura no celular.
+- `POST /v1/qr-login/challenges/{id}/scan`: vincula o challenge à sessão do celular.
+- `POST /v1/qr-login/challenges/{id}/verify`: compara o código exibido no desktop.
+- `POST /v1/qr-login/challenges/{id}/decision`: aprova ou recusa a nova sessão.
+- `POST /v1/qr-login/challenges/{id}/exchange`: troca uma aprovação por uma sessão de uso único.
+- `GET /v1/qr-login/challenges/{id}` e `/ws`: consultam o estado persistido por polling ou WebSocket.
 
 Senhas usam Argon2id com 19 MiB, duas iterações e paralelismo 1. Em 2026-08-01, o benchmark manual (`cargo test -p sentinel-infrastructure benchmark_argon2id_hash -- --ignored --nocapture`) mediu mediana de 406 ms em cinco hashes, build de desenvolvimento, num AMD Ryzen 5 5500. Esse número não representa produção e deve ser repetido no binário/hardware de deploy. `last_seen_at` é atualizado no máximo a cada `SESSION_TOUCH_INTERVAL` (5 minutos por padrão), reduzindo write amplification sem estender uma sessão após seu limite absoluto.
 
@@ -57,6 +65,28 @@ Senhas usam Argon2id com 19 MiB, duas iterações e paralelismo 1. Em 2026-08-01
 - `DB_MAX_CONNECTIONS`: máximo do pool, maior que zero.
 - `DB_ACQUIRE_TIMEOUT_SECS`: espera máxima por uma conexão do pool.
 - `DB_CONNECT_TIMEOUT_SECS`: tempo máximo para estabelecer o pool no startup.
+
+## Testes
+
+As suítes Rust cobrem regras de domínio, contrato HTTP, migrações, concorrência, sessões e
+QR contra PostgreSQL real:
+
+```bash
+TEST_DATABASE_URL=postgres://sentinel:sentinel@127.0.0.1:5432/sentinel \
+  cargo test --workspace --no-fail-fast
+```
+
+No frontend, Vitest cobre componentes e clientes HTTP. Playwright inicia API e Vite e executa os
+fluxos completos em projetos desktop e mobile:
+
+```bash
+npm test --prefix apps/web
+TEST_DATABASE_URL=postgres://sentinel:sentinel@127.0.0.1:5432/sentinel \
+  npm run test:e2e --prefix apps/web
+```
+
+O CI também exige `rustfmt`, Clippy sem warnings, build do frontend, auditoria de dependências e
+varredura de segredos.
 
 ## Princípios obrigatórios
 

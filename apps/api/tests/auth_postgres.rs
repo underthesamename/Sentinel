@@ -43,13 +43,13 @@ struct TestDatabase {
 impl TestDatabase {
     async fn create() -> Self {
         let database_url = env::var("TEST_DATABASE_URL")
-            .expect("TEST_DATABASE_URL é obrigatório para os testes PostgreSQL da Fase 1");
+            .expect("TEST_DATABASE_URL é obrigatório para os testes PostgreSQL");
         let admin_pool = PgPoolOptions::new()
             .max_connections(5)
             .connect(&database_url)
             .await
             .expect("PostgreSQL de teste indisponível");
-        let schema = format!("phase1_{}", Uuid::new_v4().simple());
+        let schema = format!("auth_{}", Uuid::new_v4().simple());
         admin_pool
             .execute(format!("CREATE SCHEMA {schema}").as_str())
             .await
@@ -108,7 +108,7 @@ fn public_config() -> Arc<PublicConfig> {
 
 fn app(pool: PgPool) -> Router {
     let config = public_config();
-    let fingerprints = FingerprintKeyRing::new([("phase1".to_owned(), vec![9; 32])])
+    let fingerprints = FingerprintKeyRing::new([("test".to_owned(), vec![9; 32])])
         .expect("keyring de teste inválido");
     let auth = Arc::new(
         sentinel_api::auth::AuthService::new(
@@ -275,7 +275,7 @@ fn cookie_from(response: &Response) -> String {
 async fn migrations_apply_from_zero_and_http_contract_survives_abuse() {
     let database = TestDatabase::create().await;
     let app = app(database.pool.clone());
-    let credentials = format!(r#"{{"email":"phase1@example.test","password":"{TEST_PASSWORD}"}}"#);
+    let credentials = format!(r#"{{"email":"auth@example.test","password":"{TEST_PASSWORD}"}}"#);
 
     let request_id = Uuid::now_v7();
     let mut registration = mutation_request("/v1/auth/register", &credentials);
@@ -403,7 +403,7 @@ async fn concurrent_session_touch_and_logout_converge_to_revoked() {
         .create_user_with_password(user_id, &email, "hash", now)
         .await
         .unwrap();
-    let keyring = FingerprintKeyRing::new([("phase1".to_owned(), vec![9; 32])]).unwrap();
+    let keyring = FingerprintKeyRing::new([("test".to_owned(), vec![9; 32])]).unwrap();
     let fingerprint = keyring.fingerprint(SESSION_CONTEXT, "synthetic-session-token");
     repository
         .create_session(&NewSession {
@@ -772,7 +772,7 @@ async fn qr_expiration_exact_session_code_limit_revocation_and_retention_fail_cl
         .unwrap();
     let qr = sentinel_api::qr::QrService::new(
         database.pool.clone(),
-        FingerprintKeyRing::new([("phase1".to_owned(), vec![9; 32])]).unwrap(),
+        FingerprintKeyRing::new([("test".to_owned(), vec![9; 32])]).unwrap(),
         Arc::new(InMemoryRateLimiter::default()),
         AppEnvironment::Ci,
     );
