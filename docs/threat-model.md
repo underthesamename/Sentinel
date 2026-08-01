@@ -1,6 +1,6 @@
 # Modelo de ameaças
 
-## Controles disponíveis após o Prompt 03
+## Controles disponíveis após o Prompt 06
 
 | Ameaça | Controle implementado | Limite residual |
 |---|---|---|
@@ -13,8 +13,10 @@
 | Credential stuffing e abuso de fluxo | Porta de rate limiting por operação e chave composta, com implementação de janela em memória | Estado se perde no restart e não é compartilhado entre instâncias; Redis é obrigatório antes de escala horizontal |
 | Vazamento em logs/auditoria | Evento de auditoria tipado, metadata em allowlist, tipos secretos com `Debug` redigido e testes de ausência de valores secretos | Revisar novas categorias/campos e o pipeline externo de observabilidade |
 | Clickjacking, MIME sniffing e cache privado | CSP com `frame-ancestors`, `nosniff`, política de referrer e `no-store, private` centralizados | CSP do frontend deverá ser específica quando conteúdo web for servido pelo mesmo componente |
-| QR fotografado ou encaminhado | Planejado: TTL, sessão móvel, number matching e uso único | Não mitigado nesta etapa; posse do QR não pode ser tratada como aprovação |
-| Queda do WebSocket | Planejado: snapshot, polling e estado persistido | Não implementado nesta etapa |
+| QR fotografado ou encaminhado | TTL, continuação HttpOnly, sessão scanner exata, number matching e decisão explícita | Relay/phishing em tempo real continua possível; posse do QR nunca equivale a aprovação |
+| Replay do QR ou exchange | Fingerprints HMAC, estados irreversíveis, lock_version e `source_challenge_id` único | Segredos ainda dependem da segurança dos dois dispositivos enquanto válidos |
+| CSWSH no fluxo QR | Origin obrigatório no handshake, subscribe autenticado e limite de mensagem | Limite de conexões é local por instância enquanto o backend de rate limit for memória |
+| Queda do WebSocket | Snapshot imediato, polling autenticado e exchange HTTP independente | Polling aumenta carga e latência percebida durante falhas longas |
 
 ## Decisões abertas
 

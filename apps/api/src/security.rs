@@ -146,6 +146,12 @@ impl HostCookieBuilder {
         )
     }
 
+    pub fn clear_qr_continuation(&self) -> HeaderValue {
+        HeaderValue::from_static(
+            "__Host-qr-cont=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax",
+        )
+    }
+
     fn build(
         &self,
         name: &str,
@@ -279,6 +285,11 @@ impl AuditEvent {
 
     pub fn session(mut self, session_id: Uuid) -> Self {
         self.session_id = Some(session_id);
+        self
+    }
+
+    pub fn challenge(mut self, challenge_id: Uuid) -> Self {
+        self.challenge_id = Some(challenge_id);
         self
     }
 

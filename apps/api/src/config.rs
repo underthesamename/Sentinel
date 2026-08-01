@@ -62,6 +62,9 @@ pub struct PublicConfig {
     pub session_absolute_ttl: Duration,
     pub csrf_ttl: Duration,
     pub session_touch_interval: Duration,
+    pub qr_challenge_ttl: Duration,
+    pub qr_approval_ttl: Duration,
+    pub qr_continuation_ttl: Duration,
 }
 
 #[derive(Clone)]
@@ -76,6 +79,9 @@ pub struct AppConfig {
     session_absolute_ttl: Duration,
     csrf_ttl: Duration,
     session_touch_interval: Duration,
+    qr_challenge_ttl: Duration,
+    qr_approval_ttl: Duration,
+    qr_continuation_ttl: Duration,
     pub database: DatabaseConfig,
 }
 
@@ -174,6 +180,18 @@ impl AppConfig {
             "SESSION_TOUCH_INTERVAL",
             &source("SESSION_TOUCH_INTERVAL").unwrap_or_else(|| "5m".to_owned()),
         )?;
+        let qr_challenge_ttl = parse_duration_value(
+            "QR_CHALLENGE_TTL",
+            &source("QR_CHALLENGE_TTL").unwrap_or_else(|| "90s".to_owned()),
+        )?;
+        let qr_approval_ttl = parse_duration_value(
+            "QR_APPROVAL_TTL",
+            &source("QR_APPROVAL_TTL").unwrap_or_else(|| "90s".to_owned()),
+        )?;
+        let qr_continuation_ttl = parse_duration_value(
+            "QR_CONTINUATION_TTL",
+            &source("QR_CONTINUATION_TTL").unwrap_or_else(|| "5m".to_owned()),
+        )?;
         if session_idle_ttl > session_absolute_ttl || session_touch_interval >= session_idle_ttl {
             return Err(ConfigError::InvalidValue {
                 key: "SESSION_IDLE_TTL",
@@ -191,6 +209,9 @@ impl AppConfig {
             session_absolute_ttl,
             csrf_ttl,
             session_touch_interval,
+            qr_challenge_ttl,
+            qr_approval_ttl,
+            qr_continuation_ttl,
             database: DatabaseConfig {
                 max_connections,
                 acquire_timeout,
@@ -218,6 +239,9 @@ impl AppConfig {
             session_absolute_ttl: self.session_absolute_ttl,
             csrf_ttl: self.csrf_ttl,
             session_touch_interval: self.session_touch_interval,
+            qr_challenge_ttl: self.qr_challenge_ttl,
+            qr_approval_ttl: self.qr_approval_ttl,
+            qr_continuation_ttl: self.qr_continuation_ttl,
         }
     }
 

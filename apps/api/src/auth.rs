@@ -73,7 +73,7 @@ impl AuthService {
         })
     }
 
-    async fn authenticate(
+    pub(crate) async fn authenticate(
         &self,
         headers: &HeaderMap,
         now: SystemTime,
@@ -100,7 +100,7 @@ impl AuthService {
             .ok_or(AuthenticationFailure::InvalidSession)
     }
 
-    async fn allow(
+    pub(crate) async fn allow(
         &self,
         operation: RateLimitOperation,
         key: RateLimitKey,
@@ -114,8 +114,41 @@ impl AuthService {
     }
 }
 
+impl AuthService {
+    pub(crate) fn validate_mutation(
+        &self,
+        headers: &HeaderMap,
+        correlation_id: CorrelationId,
+    ) -> Result<(), ApiError> {
+        self.origin_policy
+            .validate_http_mutation(headers)
+            .map_err(|_| ApiError::csrf_rejected(correlation_id))
+    }
+
+    pub(crate) fn validate_websocket(&self, headers: &HeaderMap) -> bool {
+        self.origin_policy.validate_websocket(headers).is_ok()
+    }
+
+    pub(crate) fn verify_session_csrf(
+        &self,
+        identity: &SessionIdentity,
+        headers: &HeaderMap,
+        now: SystemTime,
+    ) -> bool {
+        let Some(record) = csrf_record(identity) else {
+            return false;
+        };
+        let supplied = headers
+            .get("x-csrf-token")
+            .and_then(|value| value.to_str().ok());
+        self.csrf
+            .verify(&identity.session_id.to_string(), supplied, &record, now)
+            == CsrfVerification::Valid
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
-enum AuthenticationFailure {
+pub(crate) enum AuthenticationFailure {
     InvalidSession,
     RepositoryUnavailable,
 }
@@ -434,6 +467,77 @@ pub async fn logout(
     Ok(response)
 }
 
+pub async fn revoke_all_sessions(
+    State(state): State<AppState>,
+    correlation_id: axum::Extension<CorrelationId>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let correlation_id = correlation_id.0;
+    state
+        .auth
+        .origin_policy
+        .validate_http_mutation(&headers)
+        .map_err(|_| ApiError::csrf_rejected(correlation_id))?;
+    let now = SystemTime::now();
+    let identity = state
+        .auth
+        .authenticate(&headers, now)
+        .await
+        .map_err(|error| authentication_error(error, correlation_id))?;
+    let csrf_record =
+        csrf_record(&identity).ok_or_else(|| ApiError::csrf_rejected(correlation_id))?;
+    let supplied = headers
+        .get("x-csrf-token")
+        .and_then(|value| value.to_str().ok());
+    if state.auth.csrf.verify(
+        &identity.session_id.to_string(),
+        supplied,
+        &csrf_record,
+        now,
+    ) != CsrfVerification::Valid
+    {
+        return Err(ApiError::csrf_rejected(correlation_id));
+    }
+
+    let revoked_at: DateTime<Utc> = now.into();
+    let mut transaction = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| ApiError::internal(correlation_id))?;
+    sqlx::query("UPDATE sessions SET revoked_at = $2, revocation_reason = 'revoke_all', csrf_token_fingerprint = NULL, csrf_token_key_id = NULL, csrf_expires_at = NULL WHERE user_id = $1 AND revoked_at IS NULL")
+        .bind(identity.user_id)
+        .bind(revoked_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| ApiError::internal(correlation_id))?;
+    sqlx::query("UPDATE qr_login_challenges SET status = 'CANCELLED', terminal_at = $2, lock_version = lock_version + 1, qr_token_fingerprint = NULL, verification_code_hash = NULL WHERE scanner_user_id = $1 AND status IN ('SCANNED', 'APPROVED')")
+        .bind(identity.user_id)
+        .bind(revoked_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| ApiError::internal(correlation_id))?;
+    transaction
+        .commit()
+        .await
+        .map_err(|_| ApiError::internal(correlation_id))?;
+
+    audit(
+        AuditOutcome::Succeeded,
+        "session.revoked_all",
+        correlation_id,
+    )
+    .user(identity.user_id)
+    .session(identity.session_id)
+    .reason_category("user_requested")
+    .write_log();
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    response
+        .headers_mut()
+        .insert(header::SET_COOKIE, state.auth.cookies.clear_session());
+    Ok(response)
+}
+
 fn csrf_record(identity: &SessionIdentity) -> Option<CsrfTokenRecord> {
     let digest: [u8; 32] = identity.csrf_fingerprint.as_deref()?.try_into().ok()?;
     Some(CsrfTokenRecord {
@@ -721,13 +825,17 @@ mod tests {
             session_absolute_ttl: Duration::from_secs(720 * 3600),
             csrf_ttl: Duration::from_secs(1800),
             session_touch_interval: Duration::from_secs(300),
+            qr_challenge_ttl: Duration::from_secs(90),
+            qr_approval_ttl: Duration::from_secs(90),
+            qr_continuation_ttl: Duration::from_secs(300),
         });
+        let fingerprints = FingerprintKeyRing::new([("test".to_owned(), vec![4; 32])]).unwrap();
         let auth = Arc::new(
             AuthService::new(
                 repository.clone(),
                 Arc::new(TestPasswordHasher),
                 Arc::new(InMemoryRateLimiter::default()),
-                FingerprintKeyRing::new([("test".to_owned(), vec![4; 32])]).unwrap(),
+                fingerprints.clone(),
                 config.clone(),
             )
             .unwrap(),
@@ -736,7 +844,18 @@ mod tests {
             .connect_lazy("postgres://sentinel:secret@127.0.0.1:1/sentinel")
             .unwrap();
         (
-            build_router(AppState::new(pool, config, Arc::new(ReadyProbe), auth)),
+            build_router(AppState::new(
+                pool.clone(),
+                config.clone(),
+                Arc::new(ReadyProbe),
+                auth,
+                Arc::new(crate::qr::QrService::new(
+                    pool,
+                    fingerprints,
+                    Arc::new(InMemoryRateLimiter::default()),
+                    config.environment,
+                )),
+            )),
             repository,
         )
     }

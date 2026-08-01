@@ -9,6 +9,7 @@ anyhow.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true
+getrandom.workspace = true
 sentinel-api-contract = { path = "../../crates/api-contract" }
 sentinel-application = { path = "../../crates/application" }
 sentinel-domain = { path = "../../crates/domain" }
@@ -26,4 +27,5 @@ uuid.workspace = true
 
 [dev-dependencies]
 http-body-util.workspace = true
+serde_yaml.workspace = true
 tower.workspace = true

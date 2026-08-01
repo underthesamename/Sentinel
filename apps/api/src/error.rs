@@ -42,6 +42,15 @@ impl ApiError {
         }
     }
 
+    pub fn gone(code: &'static str, title: &'static str, correlation_id: CorrelationId) -> Self {
+        Self {
+            status: StatusCode::GONE,
+            code,
+            title,
+            correlation_id,
+        }
+    }
+
     pub fn unauthorized(correlation_id: CorrelationId) -> Self {
         Self {
             status: StatusCode::UNAUTHORIZED,

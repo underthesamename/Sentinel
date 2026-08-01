@@ -24,7 +24,9 @@ O banco é a fonte de verdade. WebSocket entrega notificações e snapshots; pol
 
 O binário em `apps/api/src/main.rs` é o composition root. Ele carrega e valida a configuração, cria o pool, aplica migrações conforme a política do ambiente, monta `AppState` e inicia o servidor. O roteador e seus adapters HTTP ficam na biblioteca `sentinel-api`, o que permite testar contratos sem abrir uma porta real.
 
-`AppState` contém somente dependências atualmente consumidas: `PgPool`, configuração pública sem segredos e uma sonda de readiness. `DATABASE_URL` permanece privada no tipo de configuração e seu `Debug` é explicitamente redigido.
+`AppState` contém `PgPool`, configuração pública sem segredos, sonda de readiness e os serviços de
+autenticação e QR. `DATABASE_URL` permanece privada no tipo de configuração e seu `Debug` é
+explicitamente redigido.
 
 ## Controles reutilizáveis de segurança
 
@@ -38,6 +40,17 @@ O binário em `apps/api/src/main.rs` é o composition root. Ele carrega e valida
 `domain::auth` concentra normalização de e-mail e política de senha. `application::auth` define portas para credenciais, sessões e hashing. A infraestrutura implementa transações PostgreSQL e Argon2id; a API apenas adapta HTTP, compõe controles baratos antes do hash e emite contratos de `api-contract`.
 
 Uma sessão é aceita somente quando fingerprint, status da conta, revogação, timeout ocioso e limite absoluto são válidos no servidor. O acesso atualiza `last_seen_at` e o timeout ocioso apenas quando o último toque tem ao menos cinco minutos, sempre limitado pela expiração absoluta. Login com cookie de sessão válido cria um token novo e revoga o identificador anterior após persistir a nova sessão.
+
+## Login QR resiliente
+
+`QrService` orquestra fingerprints, limites e transações, sem manter autorização em memória. O
+`qr_token` chega ao navegador no fragmento e vira uma continuação HttpOnly antes do login. Scan,
+código e decisão exigem a sessão scanner exata. O exchange bloqueia a linha do challenge e cria a
+sessão com `source_challenge_id` único na mesma transação que grava `EXCHANGED`.
+
+O WebSocket recebe subscribe autenticado e consulta snapshots no PostgreSQL. Se ele falhar, o
+desktop usa o mesmo `subscription_token` em polling e conclui pelo endpoint HTTP de exchange.
+Assim, reconexão e perda de eventos alteram latência, nunca a decisão.
 
 ## Inicialização e migrações
 

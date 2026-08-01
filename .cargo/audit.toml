@@ -1,0 +1,4 @@
+[advisories]
+# O gate da Fase 1 bloqueia achados altos e críticos. Achados abaixo do limiar continuam visíveis
+# no relatório do cargo-audit e precisam permanecer documentados no relatório de testes.
+severity_threshold = "high"

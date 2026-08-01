@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
+use chrono::{Duration as ChronoDuration, Utc};
 use sentinel_api::{AppState, DatabaseHealthProbe, build_router, config::AppConfig, init_tracing};
 use sentinel_infrastructure::{
     PostgresPoolConfig,
@@ -45,21 +46,30 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    let rate_limiter = Arc::new(InMemoryRateLimiter::default());
     let auth = Arc::new(
         sentinel_api::auth::AuthService::new(
             Arc::new(PostgresAuthRepository::new(pool.clone())),
             Arc::new(Argon2idPasswordHasher::new().context("Argon2id indisponível")?),
-            Arc::new(InMemoryRateLimiter::default()),
-            fingerprint_keys,
+            rate_limiter.clone(),
+            fingerprint_keys.clone(),
             public_config.clone(),
         )
         .context("política de origem inválida")?,
     );
+    let qr = Arc::new(sentinel_api::qr::QrService::new(
+        pool.clone(),
+        fingerprint_keys,
+        rate_limiter,
+        public_config.environment,
+    ));
+    spawn_qr_cleanup(qr.clone());
     let state = AppState::new(
         pool.clone(),
         public_config,
         Arc::new(DatabaseHealthProbe::new(pool)),
         auth,
+        qr,
     );
     let app = build_router(state);
 
@@ -86,6 +96,22 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn spawn_qr_cleanup(qr: Arc<sentinel_api::qr::QrService>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            let now = Utc::now();
+            if let Err(error) = qr
+                .cleanup_retained(now, now - ChronoDuration::days(30))
+                .await
+            {
+                error!(event = "qr.cleanup.failed", error = %error, "limpeza de QR falhou");
+            }
+        }
+    });
 }
 
 async fn shutdown_signal() {

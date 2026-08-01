@@ -1,7 +1,5 @@
 # Product
 
-<!-- impeccable:product-schema 1 -->
-
 ## Platform
 
 web
@@ -28,8 +26,8 @@ A experiência atravessa desktop e celular. A primeira superfície é uma aprese
 
 ## Capabilities and Constraints
 
-- O estado atual contém a fundação técnica, health checks, domínio inicial e migração PostgreSQL.
-- A interface ainda não deve alegar que cadastro, login ou fluxo QR estão disponíveis.
+- O estado atual contém cadastro e login por senha, sessão HTTP, fluxo QR resiliente, CSRF, rate limiting, health checks e persistência PostgreSQL.
+- A interface oferece criação do challenge no desktop, bootstrap/scan no celular, number matching, aprovação e troca por sessão com WebSocket ou polling.
 - Um challenge poderá produzir no máximo uma sessão.
 - Estados terminais serão irreversíveis.
 - CSRF, rate limiting, revogação e proteção contra replay entram junto com cada funcionalidade.
