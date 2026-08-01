@@ -2,8 +2,8 @@ import { devices, expect, test } from "@playwright/test";
 
 const password = "sentinel-e2e-password-2026";
 
-test("cadastro, login, restauração, logout e foco com backend real", async ({ page }) => {
-  const email = `sentinel-e2e-${Date.now()}@example.test`;
+test("cadastro, login, restauração, logout e foco com backend real", async ({ page }, testInfo) => {
+  const email = `sentinel-e2e-${testInfo.project.name}-${Date.now()}@example.test`;
   await page.goto("/cadastro");
   await expect(page.getByLabel("E-mail")).toHaveAttribute("autocomplete", "email");
   await page.getByLabel("E-mail").fill(email);
