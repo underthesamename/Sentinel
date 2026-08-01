@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Sentinel API
   version: 0.2.0
-  description: Fundação e autenticação por senha da Fase 1.
+  description: Autenticação por senha e autorização entre dispositivos por QR.
 servers:
   - url: http://localhost:8080
 paths:

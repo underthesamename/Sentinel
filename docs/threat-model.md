@@ -1,11 +1,11 @@
 # Modelo de ameaças
 
-## Controles disponíveis após o Prompt 06
+## Controles implementados
 
 | Ameaça | Controle implementado | Limite residual |
 |---|---|---|
 | CSRF em mutações autenticadas por cookie | Logout exige token aleatório de 256 bits vinculado à sessão por HMAC, expiração explícita e validação de origem | Novas mutações autenticadas ainda precisam compor os mesmos validadores; SameSite é apenas defesa adicional |
-| CSWSH | Allowlist normalizada e `Origin` obrigatório, sem fallback para `Referer` | O handshake WebSocket será implementado na fase de QR e deverá chamar a política |
+| CSWSH | Allowlist normalizada e `Origin` obrigatório no handshake WebSocket, sem fallback para `Referer` | Novos canais autenticados precisam reutilizar a mesma política |
 | Roubo/fixação de sessão | Sessão opaca persistida apenas por fingerprint; `__Host-session` seguro; rotação invalida a sessão apresentada no login; timeout ocioso/absoluto e revogação no servidor | XSS ou comprometimento do host ainda podem agir enquanto a sessão estiver válida; gestão de todas as sessões é fase posterior |
 | Enumeração e credential stuffing | Conta inexistente e senha incorreta produzem contrato equivalente e executam Argon2id; rate limit usa conta normalizada + rede | Tempos podem variar por carga e banco; limiter em memória perde estado no restart |
 | Senhas fracas ou vazadas | Mínimo de 15 caracteres, suporte a senhas longas, blocklist inicial e Argon2id 19 MiB/t=2/p=1 | A blocklist embarcada é deliberadamente pequena; antes de produção deve ser substituída por corpus versionado e processo de atualização |
