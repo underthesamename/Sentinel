@@ -1,0 +1,69 @@
+{
+  "title": "Escolha o mundo visual do Sentinel",
+  "question": "A proposta principal transforma autenticação em uma rota visível e fail-safe. Mantenha-a, escolha uma alternativa ou peça outra rodada.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Painel de Intertravamento",
+      "kicker": "PROPOSTA PRINCIPAL",
+      "lineage": "cabines ferroviárias e diagramas de rotas bloqueadas",
+      "thesis": "Cada etapa do login aparece como uma rota protegida que só avança quando o próximo sinal é válido.",
+      "palette": ["#efe9d8", "#173831", "#e7b44b", "#bd523f"],
+      "materials": ["placa esmaltada", "linhas de circuito", "lâmpadas de estado"],
+      "viewport": "Uma linha de autenticação atravessa a tela entre desktop, celular e sessão, com o estado atual aceso no centro.",
+      "risk": "Pode parecer industrial demais se a tipografia e os espaços não trouxerem leveza.",
+      "sketch": ".impeccable/sketches/assigned.webp"
+    },
+    {
+      "id": "challenger-screenprint",
+      "label": "Registro em Camadas",
+      "lineage": "serigrafia com passes translúcidos e marcas de registro",
+      "thesis": "Desktop, celular e backend são passes separados que só formam a autenticação quando se alinham.",
+      "case": "Identificação alta e clareza boa; perde um pouco da leitura operacional da proposta principal.",
+      "palette": ["#f4efe3", "#087f8c", "#e59b2f", "#c8444f"],
+      "materials": ["papel translúcido", "tinta spot-color", "marcas de registro"],
+      "viewport": "Três planos coloridos se sobrepõem em um diagrama grande até revelar uma sessão confirmada.",
+      "risk": "As sobreposições podem competir com o texto técnico.",
+      "sketch": ".impeccable/sketches/challenger-screenprint.webp",
+      "hero": "https://impeccable.style/worlds/cards/ink-pigment-printmaking-screenprint-transparent-overlap-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/ink-pigment-printmaking-screenprint-transparent-overlap.webp"
+    },
+    {
+      "id": "challenger-jacquard",
+      "label": "Trama de Autorizações",
+      "lineage": "tear jacquard dirigido por instruções perfuradas",
+      "thesis": "Pequenas decisões binárias se acumulam até formar uma sessão verificável e única.",
+      "case": "Expressa bem estado e rastreabilidade, mas exige mais esforço para compreender o fluxo à primeira vista.",
+      "palette": ["#111d3c", "#d7ae54", "#e8dfc9", "#080d1e"],
+      "materials": ["seda azul", "fio dourado", "cartões perfurados"],
+      "viewport": "Uma matriz de decisões se transforma gradualmente em um emblema Sentinel tecido no lado oposto.",
+      "risk": "Pode comunicar luxo antes de comunicar segurança prática.",
+      "sketch": ".impeccable/sketches/challenger-jacquard.webp",
+      "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-jacquard-punched-brocade-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-jacquard-punched-brocade.webp"
+    },
+    {
+      "id": "challenger-darkroom",
+      "label": "Câmara de Revelação",
+      "lineage": "laboratório fotográfico sob luz âmbar",
+      "thesis": "A confiança surge em etapas controladas, e a sessão só aparece depois do último banho de validação.",
+      "case": "Tem forte atmosfera, porém a metáfora de revelação é menos precisa que a rota bloqueada.",
+      "palette": ["#2a120b", "#e49a35", "#d8d0be", "#090807"],
+      "materials": ["luz de segurança", "prata úmida", "tiras de teste"],
+      "viewport": "O fluxo surge lentamente em uma faixa fotográfica, da solicitação vazia à sessão revelada.",
+      "risk": "O ambiente escuro pode aproximar o produto do visual cyber convencional.",
+      "sketch": ".impeccable/sketches/challenger-darkroom.webp",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-darkroom-safelight-bay-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/signals-instruments-darkroom-safelight-bay.webp"
+    }
+  ],
+  "reroll": true,
+  "canon": true,
+  "canonCard": {
+    "label": "Padrão da categoria",
+    "thesis": "Landing page convencional de segurança, executada com alta qualidade.",
+    "viewport": "Título, explicação curta, CTA e diagrama do fluxo em uma composição familiar.",
+    "sketch": ".impeccable/sketches/canon.webp"
+  },
+  "steer": true
+}
