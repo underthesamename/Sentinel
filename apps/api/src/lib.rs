@@ -1,5 +1,7 @@
+pub mod auth;
 pub mod config;
 mod error;
+pub mod qr;
 pub mod security;
 
 use std::{sync::Arc, time::Duration};
@@ -12,6 +14,7 @@ use axum::{
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
+    routing::post,
 };
 use config::PublicConfig;
 use error::ApiError;
@@ -58,6 +61,8 @@ pub struct AppState {
     pub pool: PgPool,
     pub config: Arc<PublicConfig>,
     health_probe: Arc<dyn HealthProbe>,
+    pub auth: Arc<auth::AuthService>,
+    pub qr: Arc<qr::QrService>,
 }
 
 impl AppState {
@@ -65,11 +70,15 @@ impl AppState {
         pool: PgPool,
         config: Arc<PublicConfig>,
         health_probe: Arc<dyn HealthProbe>,
+        auth: Arc<auth::AuthService>,
+        qr: Arc<qr::QrService>,
     ) -> Self {
         Self {
             pool,
             config,
             health_probe,
+            auth,
+            qr,
         }
     }
 }
@@ -78,6 +87,26 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
+        .route("/v1/auth/register", post(auth::register))
+        .route("/v1/auth/login", post(auth::login))
+        .route("/v1/auth/me", get(auth::me))
+        .route("/v1/auth/csrf", get(auth::csrf))
+        .route("/v1/auth/logout", post(auth::logout))
+        .route("/v1/sessions/revoke-all", post(auth::revoke_all_sessions))
+        .route("/v1/qr-login/challenges", post(qr::create_challenge))
+        .route("/v1/qr-login/bootstrap", post(qr::bootstrap))
+        .route("/v1/qr-login/scan", post(qr::scan))
+        .route("/v1/qr-login/challenges/{id}", get(qr::details))
+        .route(
+            "/v1/qr-login/challenges/{id}/verify-code",
+            post(qr::verify_code),
+        )
+        .route("/v1/qr-login/challenges/{id}/approve", post(qr::approve))
+        .route("/v1/qr-login/challenges/{id}/reject", post(qr::reject))
+        .route("/v1/qr-login/challenges/{id}/status", get(qr::status))
+        .route("/v1/qr-login/challenges/{id}/cancel", post(qr::cancel))
+        .route("/v1/qr-login/exchange", post(qr::exchange))
+        .route("/v1/qr-login/ws", get(qr::websocket))
         .fallback(not_found)
         .with_state(state)
         .layer(
@@ -181,6 +210,10 @@ mod tests {
         http::{Request, StatusCode},
     };
     use http_body_util::BodyExt;
+    use sentinel_infrastructure::{
+        auth::{Argon2idPasswordHasher, PostgresAuthRepository},
+        security::{FingerprintKeyRing, InMemoryRateLimiter},
+    };
     use sqlx::postgres::PgPoolOptions;
     use tower::ServiceExt;
 
@@ -205,8 +238,37 @@ mod tests {
             environment: AppEnvironment::Ci,
             app_origin: "https://sentinel.example".to_owned(),
             websocket_origins: vec!["https://sentinel.example".to_owned()],
+            session_idle_ttl: Duration::from_secs(1800),
+            session_absolute_ttl: Duration::from_secs(30 * 24 * 3600),
+            csrf_ttl: Duration::from_secs(1800),
+            session_touch_interval: Duration::from_secs(300),
+            qr_challenge_ttl: Duration::from_secs(90),
+            qr_approval_ttl: Duration::from_secs(90),
+            qr_continuation_ttl: Duration::from_secs(300),
         });
-        build_router(AppState::new(pool, config, Arc::new(FixedProbe(ready))))
+        let fingerprints = FingerprintKeyRing::new([("test".to_owned(), vec![7; 32])]).unwrap();
+        let auth = Arc::new(
+            auth::AuthService::new(
+                Arc::new(PostgresAuthRepository::new(pool.clone())),
+                Arc::new(Argon2idPasswordHasher::new().unwrap()),
+                Arc::new(InMemoryRateLimiter::default()),
+                fingerprints.clone(),
+                config.clone(),
+            )
+            .unwrap(),
+        );
+        build_router(AppState::new(
+            pool.clone(),
+            config.clone(),
+            Arc::new(FixedProbe(ready)),
+            auth,
+            Arc::new(qr::QrService::new(
+                pool.clone(),
+                fingerprints,
+                Arc::new(InMemoryRateLimiter::default()),
+                config.environment,
+            )),
+        ))
     }
 
     #[tokio::test]

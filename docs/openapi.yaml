@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Sentinel API
-  version: 0.1.0
-  description: Contrato inicial; endpoints funcionais serão detalhados por fase.
+  version: 0.2.0
+  description: Fundação e autenticação por senha da Fase 1.
 servers:
   - url: http://localhost:8080
 paths:
@@ -41,7 +41,260 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/ProblemDetails"
+  /v1/auth/register:
+    post:
+      operationId: register
+      summary: Cria uma conta; não cria sessão.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CredentialsRequest" }
+      responses:
+        "201":
+          description: Conta criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+  /v1/auth/login:
+    post:
+      operationId: login
+      summary: Cria uma sessão por senha e rotaciona uma sessão apresentada.
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CredentialsRequest" }
+      responses:
+        "200":
+          description: Login concluído
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: Cookie __Host-session Secure, HttpOnly, SameSite=Lax e Path=/.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionResponse" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+  /v1/auth/me:
+    get:
+      operationId: currentSession
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Sessão ativa
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionResponse" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /v1/auth/csrf:
+    get:
+      operationId: issueCsrf
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: CSRF emitido ou renovado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CsrfResponse" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /v1/auth/logout:
+    post:
+      operationId: logout
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Sessão revogada e cookie removido
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /v1/sessions/revoke-all:
+    post:
+      operationId: revokeAllSessions
+      summary: Revoga todas as sessões do usuário e cancela seus logins QR pendentes.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Origin"
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Todas as sessões foram revogadas e o cookie foi removido
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /v1/qr-login/challenges:
+    post:
+      operationId: createQrChallenge
+      summary: Cria challenge e devolve os três segredos somente ao desktop.
+      responses:
+        "201":
+          description: Challenge criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QrChallengeCreated" }
+        "429": { $ref: "#/components/responses/Problem" }
+  /v1/qr-login/bootstrap:
+    post:
+      operationId: bootstrapQr
+      summary: Converte o qr_token recebido no corpo em continuação HttpOnly.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qr_token]
+              properties: { qr_token: { type: string, writeOnly: true } }
+      responses:
+        "204": { description: Continuação criada }
+        "410": { $ref: "#/components/responses/Problem" }
+  /v1/qr-login/scan:
+    post:
+      operationId: scanQr
+      summary: Consome a continuação e vincula o challenge à sessão scanner exata.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Origin" }
+        - { $ref: "#/components/parameters/Csrf" }
+      responses:
+        "200": { description: Challenge vinculado }
+        "403": { $ref: "#/components/responses/Problem" }
+        "410": { $ref: "#/components/responses/Problem" }
+  /v1/qr-login/challenges/{id}:
+    parameters: [{ $ref: "#/components/parameters/ChallengeId" }]
+    get:
+      operationId: qrChallengeDetails
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200": { description: Detalhes autorizados à sessão scanner }
+        "404": { $ref: "#/components/responses/Problem" }
+  /v1/qr-login/challenges/{id}/verify-code:
+    parameters: [{ $ref: "#/components/parameters/ChallengeId" }]
+    post:
+      operationId: verifyQrCode
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Origin" }
+        - { $ref: "#/components/parameters/Csrf" }
+      responses:
+        "200": { description: Código confirmado }
+        "403": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+  /v1/qr-login/challenges/{id}/approve:
+    parameters: [{ $ref: "#/components/parameters/ChallengeId" }]
+    post:
+      operationId: approveQr
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Origin" }
+        - { $ref: "#/components/parameters/Csrf" }
+      responses:
+        "200": { description: Challenge aprovado; não define cookie desktop }
+        "409": { $ref: "#/components/responses/Problem" }
+  /v1/qr-login/challenges/{id}/reject:
+    parameters: [{ $ref: "#/components/parameters/ChallengeId" }]
+    post:
+      operationId: rejectQr
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Origin" }
+        - { $ref: "#/components/parameters/Csrf" }
+      responses:
+        "200": { description: Challenge rejeitado }
+        "409": { $ref: "#/components/responses/Problem" }
+  /v1/qr-login/challenges/{id}/status:
+    parameters: [{ $ref: "#/components/parameters/ChallengeId" }]
+    get:
+      operationId: qrStatus
+      security: [{ subscriptionToken: [] }]
+      responses:
+        "200":
+          description: Snapshot persistido para polling
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QrStatus" }
+        "404": { $ref: "#/components/responses/Problem" }
+  /v1/qr-login/challenges/{id}/cancel:
+    parameters: [{ $ref: "#/components/parameters/ChallengeId" }]
+    post:
+      operationId: cancelQr
+      responses:
+        "204": { description: Challenge cancelado }
+        "409": { $ref: "#/components/responses/Problem" }
+  /v1/qr-login/exchange:
+    post:
+      operationId: exchangeQr
+      summary: Cria no máximo uma sessão para um challenge aprovado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExchangeRequest" }
+      responses:
+        "204": { description: Sessão criada em cookie __Host-session }
+        "409": { $ref: "#/components/responses/Problem" }
+        "410": { $ref: "#/components/responses/Problem" }
+  /v1/qr-login/ws:
+    get:
+      operationId: qrWebSocket
+      summary: Upgrade WebSocket; subscribe autenticado ocorre na primeira mensagem.
+      parameters: [{ $ref: "#/components/parameters/Origin" }]
+      responses:
+        "101": { description: Switching Protocols }
+        "400": { $ref: "#/components/responses/Problem" }
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-session
+    subscriptionToken:
+      type: http
+      scheme: bearer
+  parameters:
+    Origin:
+      name: Origin
+      in: header
+      required: true
+      schema: { type: string, format: uri }
+    Csrf:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string, writeOnly: true }
+    ChallengeId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Problem:
+      description: Erro RFC 9457
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/ProblemDetails" }
   headers:
     RequestId:
       description: UUID de correlação validado ou gerado pelo servidor.
@@ -64,3 +317,60 @@ components:
         status: { type: integer, minimum: 400, maximum: 599 }
         code: { type: string }
         correlation_id: { type: string, format: uuid }
+    CredentialsRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 15, maxLength: 1024, writeOnly: true }
+    User:
+      type: object
+      required: [id, email]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+    SessionDetails:
+      type: object
+      required: [id, idle_expires_at, absolute_expires_at]
+      properties:
+        id: { type: string, format: uuid }
+        idle_expires_at: { type: string, format: date-time }
+        absolute_expires_at: { type: string, format: date-time }
+    SessionResponse:
+      type: object
+      required: [user, session]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        session: { $ref: "#/components/schemas/SessionDetails" }
+    CsrfResponse:
+      type: object
+      required: [csrf_token, expires_at]
+      properties:
+        csrf_token: { type: string, writeOnly: true }
+        expires_at: { type: string, format: date-time }
+    QrChallengeCreated:
+      type: object
+      required: [challenge_id, qr_payload, subscription_token, verification_code, qr_expires_at, poll_after_ms]
+      properties:
+        challenge_id: { type: string, format: uuid }
+        qr_payload: { type: string, description: URL cujo qr_token está somente no fragmento }
+        subscription_token: { type: string, writeOnly: true }
+        verification_code: { type: string, pattern: "^[0-9]{4}$", writeOnly: true }
+        qr_expires_at: { type: string, format: date-time }
+        poll_after_ms: { type: integer, minimum: 1500 }
+    QrStatus:
+      type: object
+      required: [challenge_id, status, lock_version, qr_expires_at]
+      properties:
+        challenge_id: { type: string, format: uuid }
+        status: { type: string, enum: [CREATED, SCANNED, APPROVED, EXCHANGED, REJECTED, EXPIRED, CANCELLED] }
+        lock_version: { type: integer }
+        qr_expires_at: { type: string, format: date-time }
+        approval_expires_at: { type: [string, "null"], format: date-time }
+    ExchangeRequest:
+      type: object
+      required: [challenge_id, subscription_token]
+      properties:
+        challenge_id: { type: string, format: uuid }
+        subscription_token: { type: string, writeOnly: true }

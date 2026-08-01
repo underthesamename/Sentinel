@@ -1,5 +1,6 @@
 //! Adaptadores de PostgreSQL, hashing, relógio, rate limiting e publicação de eventos.
 
+pub mod auth;
 pub mod security;
 
 use std::time::Duration;

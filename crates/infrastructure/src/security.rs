@@ -62,6 +62,10 @@ pub struct TokenFingerprint {
 }
 
 impl TokenFingerprint {
+    pub fn from_parts(key_id: String, digest: [u8; 32]) -> Self {
+        Self { key_id, digest }
+    }
+
     pub fn key_id(&self) -> &str {
         &self.key_id
     }
@@ -131,6 +135,16 @@ impl FingerprintKeyRing {
             key_id: active.id.clone(),
             digest: digest(&active.bytes, context, token),
         }
+    }
+
+    pub fn candidates(&self, context: &[u8], token: &str) -> Vec<TokenFingerprint> {
+        self.keys
+            .iter()
+            .map(|key| TokenFingerprint {
+                key_id: key.id.clone(),
+                digest: digest(&key.bytes, context, token),
+            })
+            .collect()
     }
 
     pub fn verify(&self, context: &[u8], token: &str, expected: &TokenFingerprint) -> bool {

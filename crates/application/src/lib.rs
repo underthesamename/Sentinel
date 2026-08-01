@@ -8,6 +8,8 @@ use async_trait::async_trait;
 use sentinel_domain::qr_login::QrLoginChallenge;
 use uuid::Uuid;
 
+pub mod auth;
+
 #[async_trait]
 pub trait ChallengeRepository: Send + Sync {
     async fn find(&self, id: Uuid) -> Result<Option<QrLoginChallenge>, RepositoryError>;

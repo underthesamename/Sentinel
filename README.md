@@ -4,7 +4,7 @@ Autenticação entre dispositivos por QR Code, com aprovação explícita, uso �
 
 ## Estado
 
-Este repositório contém a fundação inicial baseada na especificação técnica v0.2.0. A API possui configuração tipada, PostgreSQL, migrações controladas, health checks distintos, erros RFC 9457, correlação e logs estruturados. Autenticação e QR login serão adicionados por fases.
+Este repositório implementa a Fase 1 da especificação técnica v0.2.0. A API possui cadastro, login por senha, sessão atual, emissão de CSRF e logout com revogação no PostgreSQL. O login por QR permanece para uma fase posterior.
 
 ## Estrutura
 
@@ -33,7 +33,17 @@ Health checks:
 
 Toda resposta propaga `X-Request-ID`. Um UUID válido enviado pelo cliente é preservado; valores ausentes ou inválidos são substituídos.
 
-O baseline de segurança reutilizável já inclui validação normalizada de origem, CSRF vinculado à sessão, cookies `__Host-`, tokens de 256 bits, fingerprints HMAC rotacionáveis, rate limiting substituível, auditoria em allowlist e cabeçalhos privados. Os endpoints de autenticação serão responsáveis por compor esses controles na próxima etapa.
+O baseline de segurança inclui validação normalizada de origem, CSRF vinculado à sessão, cookies `__Host-`, tokens de 256 bits, fingerprints HMAC rotacionáveis, rate limiting substituível, auditoria em allowlist e cabeçalhos privados. Os endpoints de autenticação compõem esses controles antes do trabalho Argon2id.
+
+Endpoints disponíveis:
+
+- `POST /v1/auth/register`: cria uma conta após normalização do e-mail e política de senha.
+- `POST /v1/auth/login`: verifica Argon2id e cria/rotaciona a sessão.
+- `GET /v1/auth/me`: retorna identidade e prazos da sessão ativa.
+- `GET /v1/auth/csrf`: emite ou renova CSRF vinculado à sessão.
+- `POST /v1/auth/logout`: exige origem e CSRF, revoga no servidor e limpa o cookie.
+
+Senhas usam Argon2id com 19 MiB, duas iterações e paralelismo 1. Em 2026-08-01, o benchmark manual (`cargo test -p sentinel-infrastructure benchmark_argon2id_hash -- --ignored --nocapture`) mediu mediana de 406 ms em cinco hashes, build de desenvolvimento, num AMD Ryzen 5 5500. Esse número não representa produção e deve ser repetido no binário/hardware de deploy. `last_seen_at` é atualizado no máximo a cada `SESSION_TOUCH_INTERVAL` (5 minutos por padrão), reduzindo write amplification sem estender uma sessão após seu limite absoluto.
 
 `TOKEN_FINGERPRINT_KEYS` usa a forma `id:chave,id-anterior:chave-anterior`: o primeiro item assina novos fingerprints e os demais verificam dados durante rotação. Cada chave deve possuir no mínimo 32 bytes. Staging e produção falham no startup se a chave estiver ausente/fraca ou se `COOKIE_SECURE=false`.
 
