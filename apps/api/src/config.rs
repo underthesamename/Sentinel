@@ -58,6 +58,10 @@ pub struct PublicConfig {
     pub environment: AppEnvironment,
     pub app_origin: String,
     pub websocket_origins: Vec<String>,
+    pub session_idle_ttl: Duration,
+    pub session_absolute_ttl: Duration,
+    pub csrf_ttl: Duration,
+    pub session_touch_interval: Duration,
 }
 
 #[derive(Clone)]
@@ -68,6 +72,10 @@ pub struct AppConfig {
     websocket_origins: Vec<String>,
     database_url: String,
     token_fingerprint_keys: Vec<(String, Vec<u8>)>,
+    session_idle_ttl: Duration,
+    session_absolute_ttl: Duration,
+    csrf_ttl: Duration,
+    session_touch_interval: Duration,
     pub database: DatabaseConfig,
 }
 
@@ -150,6 +158,27 @@ impl AppConfig {
             Some(value) => parse_bool("RUN_MIGRATIONS", &value)?,
             None => environment.migrations_default(),
         };
+        let session_idle_ttl = parse_duration_value(
+            "SESSION_IDLE_TTL",
+            &source("SESSION_IDLE_TTL").unwrap_or_else(|| "30m".to_owned()),
+        )?;
+        let session_absolute_ttl = parse_duration_value(
+            "SESSION_ABSOLUTE_TTL",
+            &source("SESSION_ABSOLUTE_TTL").unwrap_or_else(|| "720h".to_owned()),
+        )?;
+        let csrf_ttl = parse_duration_value(
+            "CSRF_TTL",
+            &source("CSRF_TTL").unwrap_or_else(|| "30m".to_owned()),
+        )?;
+        let session_touch_interval = parse_duration_value(
+            "SESSION_TOUCH_INTERVAL",
+            &source("SESSION_TOUCH_INTERVAL").unwrap_or_else(|| "5m".to_owned()),
+        )?;
+        if session_idle_ttl > session_absolute_ttl || session_touch_interval >= session_idle_ttl {
+            return Err(ConfigError::InvalidValue {
+                key: "SESSION_IDLE_TTL",
+            });
+        }
 
         Ok(Self {
             environment,
@@ -158,6 +187,10 @@ impl AppConfig {
             websocket_origins,
             database_url,
             token_fingerprint_keys,
+            session_idle_ttl,
+            session_absolute_ttl,
+            csrf_ttl,
+            session_touch_interval,
             database: DatabaseConfig {
                 max_connections,
                 acquire_timeout,
@@ -181,12 +214,35 @@ impl AppConfig {
             environment: self.environment,
             app_origin: self.app_origin.clone(),
             websocket_origins: self.websocket_origins.clone(),
+            session_idle_ttl: self.session_idle_ttl,
+            session_absolute_ttl: self.session_absolute_ttl,
+            csrf_ttl: self.csrf_ttl,
+            session_touch_interval: self.session_touch_interval,
         }
     }
 
     pub fn token_fingerprint_keys(&self) -> Vec<(String, Vec<u8>)> {
         self.token_fingerprint_keys.clone()
     }
+}
+
+fn parse_duration_value(key: &'static str, value: &str) -> Result<Duration, ConfigError> {
+    let (number, multiplier) = match value.chars().last() {
+        Some('s') => (&value[..value.len() - 1], 1_u64),
+        Some('m') => (&value[..value.len() - 1], 60),
+        Some('h') => (&value[..value.len() - 1], 3600),
+        _ => return Err(ConfigError::InvalidValue { key }),
+    };
+    let amount = number
+        .parse::<u64>()
+        .map_err(|_| ConfigError::InvalidValue { key })?;
+    if amount == 0 {
+        return Err(ConfigError::InvalidValue { key });
+    }
+    amount
+        .checked_mul(multiplier)
+        .map(Duration::from_secs)
+        .ok_or(ConfigError::InvalidValue { key })
 }
 
 fn parse_fingerprint_keys(

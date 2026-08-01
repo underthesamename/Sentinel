@@ -2,7 +2,12 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use sentinel_api::{AppState, DatabaseHealthProbe, build_router, config::AppConfig, init_tracing};
-use sentinel_infrastructure::{PostgresPoolConfig, connect_postgres, security::FingerprintKeyRing};
+use sentinel_infrastructure::{
+    PostgresPoolConfig,
+    auth::{Argon2idPasswordHasher, PostgresAuthRepository},
+    connect_postgres,
+    security::{FingerprintKeyRing, InMemoryRateLimiter},
+};
 use tracing::{error, info};
 
 #[tokio::main]
@@ -10,7 +15,7 @@ async fn main() -> anyhow::Result<()> {
     init_tracing();
 
     let config = AppConfig::from_env().context("configuração inválida")?;
-    let _fingerprint_keys = FingerprintKeyRing::new(config.token_fingerprint_keys())
+    let fingerprint_keys = FingerprintKeyRing::new(config.token_fingerprint_keys())
         .context("keyring de fingerprints inválido")?;
     let public_config = Arc::new(config.public());
 
@@ -40,10 +45,21 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    let auth = Arc::new(
+        sentinel_api::auth::AuthService::new(
+            Arc::new(PostgresAuthRepository::new(pool.clone())),
+            Arc::new(Argon2idPasswordHasher::new().context("Argon2id indisponível")?),
+            Arc::new(InMemoryRateLimiter::default()),
+            fingerprint_keys,
+            public_config.clone(),
+        )
+        .context("política de origem inválida")?,
+    );
     let state = AppState::new(
         pool.clone(),
         public_config,
         Arc::new(DatabaseHealthProbe::new(pool)),
+        auth,
     );
     let app = build_router(state);
 
@@ -58,9 +74,12 @@ async fn main() -> anyhow::Result<()> {
         "Sentinel API iniciada"
     );
 
-    if let Err(error) = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
+    if let Err(error) = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
     {
         error!(event = "api.serve.failed", error = %error, "servidor HTTP encerrou com erro");
         return Err(error.into());

@@ -33,6 +33,12 @@ O binário em `apps/api/src/main.rs` é o composition root. Ele carrega e valida
 - `api::security` adapta validação de `Origin`/`Referer`, cookies `__Host-`, cabeçalhos privados e eventos de auditoria tipados.
 - `TOKEN_FINGERPRINT_KEYS` ordena a chave ativa e as anteriores. Segredos permanecem fora de `PublicConfig` e têm saída `Debug` redigida.
 
+## Autenticação por senha
+
+`domain::auth` concentra normalização de e-mail e política de senha. `application::auth` define portas para credenciais, sessões e hashing. A infraestrutura implementa transações PostgreSQL e Argon2id; a API apenas adapta HTTP, compõe controles baratos antes do hash e emite contratos de `api-contract`.
+
+Uma sessão é aceita somente quando fingerprint, status da conta, revogação, timeout ocioso e limite absoluto são válidos no servidor. O acesso atualiza `last_seen_at` e o timeout ocioso apenas quando o último toque tem ao menos cinco minutos, sempre limitado pela expiração absoluta. Login com cookie de sessão válido cria um token novo e revoga o identificador anterior após persistir a nova sessão.
+
 ## Inicialização e migrações
 
 ```text

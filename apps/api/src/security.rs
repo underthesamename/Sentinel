@@ -137,7 +137,7 @@ impl HostCookieBuilder {
         value: &str,
         max_age: Duration,
     ) -> Result<HeaderValue, CookieError> {
-        self.build("__Host-qr-cont", value, max_age, SameSitePolicy::Strict)
+        self.build("__Host-qr-cont", value, max_age, SameSitePolicy::Lax)
     }
 
     pub fn clear_session(&self) -> HeaderValue {
@@ -272,6 +272,16 @@ impl AuditEvent {
         self
     }
 
+    pub fn user(mut self, user_id: Uuid) -> Self {
+        self.user_id = Some(user_id);
+        self
+    }
+
+    pub fn session(mut self, session_id: Uuid) -> Self {
+        self.session_id = Some(session_id);
+        self
+    }
+
     pub fn attempt_count(mut self, count: u32) -> Self {
         self.metadata
             .insert("attempt_count", AuditValue::Count(count));
@@ -293,8 +303,14 @@ impl AuditEvent {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        io::Write,
+        sync::{Arc, Mutex},
+    };
+
     use axum::{Router, body::Body, http::Request, routing::get};
     use tower::ServiceExt;
+    use tracing_subscriber::fmt::MakeWriter;
 
     use super::*;
 
@@ -374,7 +390,7 @@ mod tests {
                 builder
                     .qr_continuation("abc_DEF-123", Duration::from_secs(300))
                     .unwrap(),
-                "__Host-qr-cont=abc_DEF-123; Path=/; Max-Age=300; Secure; HttpOnly; SameSite=Strict"
+                "__Host-qr-cont=abc_DEF-123; Path=/; Max-Age=300; Secure; HttpOnly; SameSite=Lax"
             );
         }
     }
@@ -402,8 +418,12 @@ mod tests {
     }
 
     #[test]
-    fn audit_serialization_only_contains_allowlisted_fields_and_no_supplied_secret() {
-        let raw_secret = "top-secret-token-value";
+    fn captured_audit_log_only_contains_allowlisted_fields_and_no_secrets() {
+        let capture = LogCapture::default();
+        let subscriber = tracing_subscriber::fmt()
+            .json()
+            .with_writer(capture.clone())
+            .finish();
         let event = AuditEvent::new(
             AuditCategory::SecurityControl,
             "security.rate_limited",
@@ -413,11 +433,47 @@ mod tests {
         .reason_category("limit_exceeded")
         .attempt_count(6)
         .key_fingerprint("sha256:public-fingerprint".to_owned());
-        let captured_log = serde_json::to_string(&event).unwrap();
-        assert!(!captured_log.contains(raw_secret));
-        assert!(!captured_log.contains("password"));
-        assert!(!captured_log.contains("csrf"));
-        assert!(!captured_log.contains("cookie"));
+        tracing::subscriber::with_default(subscriber, || event.write_log());
+        let captured_log = capture.contents();
+        for secret in [
+            "person@example.com",
+            "correct horse battery staple",
+            "raw-session-token",
+            "Cookie: __Host-session=raw-session-token",
+            "raw-csrf-token",
+        ] {
+            assert!(!captured_log.contains(secret));
+        }
         assert!(captured_log.contains("key_fingerprint"));
+    }
+
+    #[derive(Clone, Default)]
+    struct LogCapture(Arc<Mutex<Vec<u8>>>);
+
+    impl LogCapture {
+        fn contents(&self) -> String {
+            String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
+        }
+    }
+
+    struct LogWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for LogWriter {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'writer> MakeWriter<'writer> for LogCapture {
+        type Writer = LogWriter;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            LogWriter(self.0.clone())
+        }
     }
 }

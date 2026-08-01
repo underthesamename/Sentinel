@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod config;
 mod error;
 pub mod security;
@@ -12,6 +13,7 @@ use axum::{
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
+    routing::post,
 };
 use config::PublicConfig;
 use error::ApiError;
@@ -58,6 +60,7 @@ pub struct AppState {
     pub pool: PgPool,
     pub config: Arc<PublicConfig>,
     health_probe: Arc<dyn HealthProbe>,
+    pub auth: Arc<auth::AuthService>,
 }
 
 impl AppState {
@@ -65,11 +68,13 @@ impl AppState {
         pool: PgPool,
         config: Arc<PublicConfig>,
         health_probe: Arc<dyn HealthProbe>,
+        auth: Arc<auth::AuthService>,
     ) -> Self {
         Self {
             pool,
             config,
             health_probe,
+            auth,
         }
     }
 }
@@ -78,6 +83,11 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
+        .route("/v1/auth/register", post(auth::register))
+        .route("/v1/auth/login", post(auth::login))
+        .route("/v1/auth/me", get(auth::me))
+        .route("/v1/auth/csrf", get(auth::csrf))
+        .route("/v1/auth/logout", post(auth::logout))
         .fallback(not_found)
         .with_state(state)
         .layer(
@@ -181,6 +191,10 @@ mod tests {
         http::{Request, StatusCode},
     };
     use http_body_util::BodyExt;
+    use sentinel_infrastructure::{
+        auth::{Argon2idPasswordHasher, PostgresAuthRepository},
+        security::{FingerprintKeyRing, InMemoryRateLimiter},
+    };
     use sqlx::postgres::PgPoolOptions;
     use tower::ServiceExt;
 
@@ -205,8 +219,27 @@ mod tests {
             environment: AppEnvironment::Ci,
             app_origin: "https://sentinel.example".to_owned(),
             websocket_origins: vec!["https://sentinel.example".to_owned()],
+            session_idle_ttl: Duration::from_secs(1800),
+            session_absolute_ttl: Duration::from_secs(30 * 24 * 3600),
+            csrf_ttl: Duration::from_secs(1800),
+            session_touch_interval: Duration::from_secs(300),
         });
-        build_router(AppState::new(pool, config, Arc::new(FixedProbe(ready))))
+        let auth = Arc::new(
+            auth::AuthService::new(
+                Arc::new(PostgresAuthRepository::new(pool.clone())),
+                Arc::new(Argon2idPasswordHasher::new().unwrap()),
+                Arc::new(InMemoryRateLimiter::default()),
+                FingerprintKeyRing::new([("test".to_owned(), vec![7; 32])]).unwrap(),
+                config.clone(),
+            )
+            .unwrap(),
+        );
+        build_router(AppState::new(
+            pool,
+            config,
+            Arc::new(FixedProbe(ready)),
+            auth,
+        ))
     }
 
     #[tokio::test]

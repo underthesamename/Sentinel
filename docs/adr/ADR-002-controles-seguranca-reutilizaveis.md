@@ -15,7 +15,7 @@ As primeiras rotas de autenticação precisarão aplicar as mesmas regras de ori
 - CSRF usa token aleatório, fingerprint vinculado ao identificador da sessão e expiração armazenada. SameSite não substitui essa validação.
 - A camada de aplicação define a porta `RateLimiter`; a infraestrutura inicial usa janela fixa em memória por operação e chave composta.
 - A API normaliza origens completas. Mutações HTTP podem usar `Referer` apenas quando `Origin` estiver ausente; WebSocket exige `Origin`.
-- Cookies `__Host-` são sempre `Secure`, `HttpOnly`, `Path=/`, sem `Domain`; sessão usa `SameSite=Lax` e continuação QR usa `SameSite=Strict`.
+- Cookies `__Host-` são sempre `Secure`, `HttpOnly`, `Path=/`, sem `Domain`; sessão e continuação QR usam `SameSite=Lax`, conforme a especificação normativa.
 - Auditoria aceita apenas campos tipados e metadata em allowlist. Respostas recebem políticas centrais de segurança e cache privado.
 - Produção falha no startup sem keyring forte e recusa `COOKIE_SECURE=false`.
 
